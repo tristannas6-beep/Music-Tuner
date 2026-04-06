@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Haptics, NotificationType } from '@capacitor/haptics';
 
 /**
- * useTuner - Advanced DSP pitch detection hook.
- * Updated to support Manual Mode (Target Pitch Locking).
+ * useTuner - Advanced DSP pitch detection hook (Pro Suite)
+ * Features: Sub-cent precision, Strobe rotation logic, and Success Haptics.
  */
 
 interface TunerState {
@@ -12,6 +12,7 @@ interface TunerState {
   cents: number;
   isDetecting: boolean;
   rms: number;
+  strobeAngle: number;
 }
 
 const LETTERS_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -19,12 +20,13 @@ const SOLFEGE_NOTES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#
 
 const EMA_ALPHA_CENTS = 0.2;
 const EMA_ALPHA_PITCH = 0.15;
-const HAPTIC_COOLDOWN_MS = 2000;
+const HAPTIC_COOLDOWN_MS = 3000;
 
 export const useTuner = (
   a4Calibration: number = 440, 
   noteNaming: 'Letters' | 'Solfege' = 'Letters',
-  targetNote: string | null = null
+  targetNote: string | null = null,
+  hapticsEnabled: boolean = true
 ) => {
   const [state, setState] = useState<TunerState>({
     pitch: 0,
@@ -32,6 +34,7 @@ export const useTuner = (
     cents: 0,
     isDetecting: false,
     rms: 0,
+    strobeAngle: 0,
   });
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -41,6 +44,7 @@ export const useTuner = (
   
   const emaCentsRef = useRef(0);
   const emaPitchRef = useRef(0);
+  const strobeAngleRef = useRef(0);
   const lastSampleRef = useRef(0);
   const lastOutputRef = useRef(0);
   const lastHapticTimeRef = useRef(0);
@@ -76,7 +80,7 @@ export const useTuner = (
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    setState(prev => ({ ...prev, isDetecting: false, pitch: 0, note: '--', cents: 0 }));
+    setState(prev => ({ ...prev, isDetecting: false, pitch: 0, note: '--', cents: 0, strobeAngle: 0 }));
   };
 
   const tick = useCallback(() => {
@@ -95,18 +99,16 @@ export const useTuner = (
       let exactCents: number;
 
       if (targetNote) {
-        // MANUAL MODE: Calculate cents relative to a locked target
         const targetHz = noteToFrequency(targetNote, a4Calibration);
         exactCents = 1200 * Math.log2(pitch / targetHz);
         displayNote = targetNote;
       } else {
-        // AUTO MODE: Closest note detection
         const data = frequencyToPitchData(pitch, a4Calibration, noteNaming);
         displayNote = data.note;
         exactCents = data.exactCents;
       }
 
-      // EMA Stabilization
+      // 1. EMA Stabilization
       emaPitchRef.current = emaPitchRef.current === 0 
         ? pitch 
         : (EMA_ALPHA_PITCH * pitch + (1 - EMA_ALPHA_PITCH) * emaPitchRef.current);
@@ -114,11 +116,16 @@ export const useTuner = (
       emaCentsRef.current = (EMA_ALPHA_CENTS * exactCents + (1 - EMA_ALPHA_CENTS) * emaCentsRef.current);
       const finalCents = Math.round(emaCentsRef.current * 10) / 10;
 
-      // Haptics
-      if (Math.abs(finalCents) < 3.0) {
+      // 2. STROBE LOGIC: Rotate based on precision error
+      // Speed = cents * constant. If cents=0, speed=0.
+      const rotationSpeed = exactCents * 0.15; 
+      strobeAngleRef.current = (strobeAngleRef.current + rotationSpeed) % 360;
+
+      // 3. SUCCESS HAPTICS (In-Tune notification)
+      if (Math.abs(finalCents) < 2.0) {
         const now = Date.now();
-        if (now - lastHapticTimeRef.current > HAPTIC_COOLDOWN_MS) {
-          Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+        if (hapticsEnabled && now - lastHapticTimeRef.current > HAPTIC_COOLDOWN_MS) {
+          Haptics.notification({ type: NotificationType.Success }).catch(() => {});
           lastHapticTimeRef.current = now;
         }
       }
@@ -128,14 +135,15 @@ export const useTuner = (
         pitch: emaPitchRef.current,
         note: displayNote,
         cents: finalCents,
-        rms
+        rms,
+        strobeAngle: strobeAngleRef.current
       }));
     } else {
       setState(prev => ({ ...prev, rms, pitch: 0 }));
     }
 
     rafIdRef.current = requestAnimationFrame(tick);
-  }, [a4Calibration, noteNaming, targetNote]);
+  }, [a4Calibration, noteNaming, targetNote, hapticsEnabled]);
 
   useEffect(() => {
     return () => {
@@ -151,18 +159,12 @@ export const useTuner = (
  * DSP: Note String to Frequency
  */
 function noteToFrequency(noteStr: string, a4: number) {
-  // Extract name and octave (e.g. "E4" -> "E", 4)
   const match = noteStr.match(/^([A-Ga-g#b]+)(\d+)$/);
   if (!match) return 440;
-  
-  const name = match[1].replace('b', '#'); // Simple normalization for b to # if needed
+  const name = match[1].replace('b', '#');
   const octave = parseInt(match[2]);
-  
-  // Find semitone index relative to C
   const noteIndex = LETTERS_NOTES.indexOf(name.toUpperCase());
   if (noteIndex === -1) return 440;
-  
-  // MIDI number = (octave + 1) * 12 + noteIndex
   const midi = (octave + 1) * 12 + noteIndex;
   return a4 * Math.pow(2, (midi - 69) / 12);
 }
@@ -170,17 +172,10 @@ function noteToFrequency(noteStr: string, a4: number) {
 /**
  * DSP: 1st-Order High Pass Filter
  */
-function applyHighPassFilter(
-  buffer: Float32Array, 
-  sampleRate: number, 
-  cutoff: number,
-  lastSample: { current: number },
-  lastOutput: { current: number }
-) {
+function applyHighPassFilter(buffer: Float32Array, sampleRate: number, cutoff: number, lastSample: { current: number }, lastOutput: { current: number }) {
   const dt = 1.0 / sampleRate;
   const RC = 1.0 / (2 * Math.PI * cutoff);
   const alpha = RC / (RC + dt);
-  
   const output = new Float32Array(buffer.length);
   for (let i = 0; i < buffer.length; i++) {
     output[i] = alpha * (lastOutput.current + buffer[i] - lastSample.current);
@@ -204,14 +199,13 @@ function applyHannWindow(buffer: Float32Array) {
 }
 
 /**
- * DSP Core: Enhanced YIN with Sub-Sample Parabolic Interpolation
+ * DSP Core: Enhanced YIN
  */
 function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
   const threshold = 0.1;
   const size = buffer.length;
   const paddedBuffer = new Float32Array(size * 2);
   paddedBuffer.set(buffer); 
-  
   const half = Math.floor(paddedBuffer.length / 2);
   let sumSq = 0;
   for (let i = 0; i < size; i++) sumSq += buffer[i] * buffer[i];
@@ -270,13 +264,10 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
 function frequencyToPitchData(hz: number, a4: number, noteNaming: 'Letters' | 'Solfege') {
   const h = 12 * (Math.log(hz / a4) / Math.log(2));
   const noteIdx = Math.round(h) + 69;
-  
   const notesArray = noteNaming === 'Solfege' ? SOLFEGE_NOTES : LETTERS_NOTES;
   const name = notesArray[noteIdx % 12];
-  
   const oct = Math.floor(noteIdx / 12) - 1;
   const exactCents = (h - Math.round(h)) * 100;
-  
   const octaveSuffix = noteNaming === 'Solfege' ? ` (${oct})` : oct;
   return { note: `${name}${octaveSuffix}`, exactCents };
 }

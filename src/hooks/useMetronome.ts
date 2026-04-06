@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
- * useMetronome - A professional-grade rhythmic engine.
- * Supports Subdivisions, Sound Profiles, and Accents.
+ * useMetronome - A professional-grade rhythmic engine (Pro Suite)
+ * Features: High-precision scheduling, Subdivision, Sound Profiles, and Pulsed Haptics.
  */
 
 export type Subdivision = '1/4' | '1/8' | 'Triplet' | '1/16';
@@ -11,7 +12,7 @@ export type SoundProfile = 'Digital' | 'Wood' | 'Cowbell';
 const LOOK_AHEAD_MS = 25.0;
 const SCHEDULE_AHEAD_SEC = 0.1;
 
-export const useMetronome = () => {
+export const useMetronome = (hapticsEnabled: boolean = true) => {
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
@@ -23,25 +24,35 @@ export const useMetronome = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextNoteTimeRef = useRef(0.0);
   const timerIdRef = useRef<number | null>(null);
-  const beatRef = useRef(0); // Main beats 0, 1, 2, 3
-  const subRef = useRef(0);  // Sub divisions
+  const beatRef = useRef(0); 
+  const subRef = useRef(0);  
   const bpmRef = useRef(120);
   const subTypeRef = useRef<Subdivision>('1/4');
+  const hapticRef = useRef(true);
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { subTypeRef.current = subdivision; }, [subdivision]);
+  useEffect(() => { hapticRef.current = hapticsEnabled; }, [hapticsEnabled]);
 
   const playClick = useCallback((time: number, isAccent: boolean, isSub: boolean) => {
     if (!audioContextRef.current) return;
 
+    // Haptics Sync: Trigger slightly before or at audio time via timeout
+    if (hapticRef.current && !isSub) {
+      const delay = (time - audioContextRef.current.currentTime) * 1000;
+      setTimeout(() => {
+        Haptics.impact({ 
+          style: isAccent ? ImpactStyle.Heavy : ImpactStyle.Light 
+        }).catch(() => {});
+      }, Math.max(0, delay - 10)); // 10ms offset for latency
+    }
+
     const osc = audioContextRef.current.createOscillator();
     const envelope = audioContextRef.current.createGain();
 
-    // 1. SELECT FREQUENCY & TYPE BY PROFILE
     let freq = isAccent ? 1200 : 800;
-    if (isSub) freq *= 0.8; // Lower pitch for subdivisions
+    if (isSub) freq *= 0.8;
     
-    let type: OscillatorType = 'triangle';
     let decay = 0.1;
 
     switch (soundProfile) {
@@ -63,8 +74,6 @@ export const useMetronome = () => {
     }
 
     osc.frequency.setValueAtTime(freq, time);
-
-    // 2. ENVELOPE MODULATION
     envelope.gain.setValueAtTime(isAccent ? 1 : 0.6, time);
     envelope.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
@@ -92,7 +101,6 @@ export const useMetronome = () => {
         }
       }, (scheduledTime - audioContextRef.current.currentTime) * 1000);
 
-      // Advance Timing based on Subdivision
       const secondsPerBeat = 60.0 / bpmRef.current;
       let notesPerBeat = 1;
       
@@ -102,11 +110,10 @@ export const useMetronome = () => {
 
       nextNoteTimeRef.current += secondsPerBeat / notesPerBeat;
       
-      // Update beat logic
       subRef.current++;
       if (subRef.current >= notesPerBeat) {
         subRef.current = 0;
-        beatRef.current = (beatRef.current + 1) % 4; // 4/4 Time
+        beatRef.current = (beatRef.current + 1) % 4;
       }
     }
 

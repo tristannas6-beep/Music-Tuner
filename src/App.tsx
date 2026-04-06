@@ -1,46 +1,113 @@
-import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { BottomNav, type TabType } from './components/BottomNav';
-import { AppProvider } from './context/AppContext';
+import React, { useState, useEffect, useRef } from 'react';
 import { TunerScreen } from './screens/TunerScreen';
 import { MetronomeScreen } from './screens/MetronomeScreen';
 import { PitchPipeScreen } from './screens/PitchPipeScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { OnboardingModal } from './components/OnboardingModal';
+import { BottomNav, type TabType } from './components/BottomNav';
+import { AppProvider, useAppContext } from './context/AppContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
-function App() {
+/**
+ * Main Content Component - Pro Suite V3.3.0
+ * Features: Sleep Mode (Idle Detection), URL Tuning Importer, Tab Orchestration.
+ */
+
+const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('tuner');
+  const { isLoaded, setTuning, isOutdoorMode } = useAppContext();
+  
+  // Sleep Mode State
+  const [isIdle, setIsIdle] = useState(false);
+  const idleTimerRef = useRef<number | null>(null);
 
-  const renderScreen = () => {
-    switch (activeTab) {
-      case 'tuner': return <TunerScreen />;
-      case 'metronome': return <MetronomeScreen />;
-      case 'pitch': return <PitchPipeScreen />;
-      case 'settings': return <SettingsScreen />;
-      default: return <TunerScreen />;
+  // 1. URL Tuning Importer
+  useEffect(() => {
+    if (!isLoaded) return;
+    const params = new URLSearchParams(window.location.search);
+    const tuningCode = params.get('tuning');
+    if (tuningCode) {
+      try {
+        const decoded = atob(tuningCode);
+        if (decoded.startsWith('TUNER:')) {
+          const content = decoded.replace('TUNER:', '');
+          const [name, notesStr] = content.split('|');
+          const notes = notesStr.split(',');
+          setTuning({ name: `Shared: ${name}`, notes });
+          // Clear URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {
+        console.error('URL Importer: Invalid tuning code', e);
+      }
     }
+  }, [isLoaded, setTuning]);
+
+  // 2. Sleep Mode Logic (60s Idle)
+  const resetIdleTimer = () => {
+    setIsIdle(false);
+    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = window.setTimeout(() => {
+      setIsIdle(true);
+    }, 60000); // 60 seconds
   };
 
+  useEffect(() => {
+    window.addEventListener('mousemove', resetIdleTimer);
+    window.addEventListener('touchstart', resetIdleTimer);
+    window.addEventListener('keydown', resetIdleTimer);
+    resetIdleTimer();
+    return () => {
+      window.removeEventListener('mousemove', resetIdleTimer);
+      window.removeEventListener('touchstart', resetIdleTimer);
+      window.removeEventListener('keydown', resetIdleTimer);
+    };
+  }, []);
+
+  if (!isLoaded) return null;
+
+  return (
+    <div 
+      style={{ 
+        height: '100%', 
+        position: 'relative', 
+        opacity: isIdle ? 0.4 : 1, 
+        transition: 'opacity 2s ease',
+        filter: isIdle ? 'blur(2px)' : 'none'
+      }}
+    >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.2 }}
+          style={{ height: '100%' }}
+        >
+          {activeTab === 'tuner' && <TunerScreen />}
+          {activeTab === 'metronome' && <MetronomeScreen />}
+          {activeTab === 'pitch' && <PitchPipeScreen />}
+          {activeTab === 'settings' && <SettingsScreen />}
+        </motion.div>
+      </AnimatePresence>
+
+      {isIdle && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+           <p className="label-text" style={{ fontSize: '12px', opacity: 0.5 }}>ACTIVE POWER SAVING MODE</p>
+        </div>
+      )}
+
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+    </div>
+  );
+};
+
+export const App: React.FC = () => {
   return (
     <AppProvider>
-      <OnboardingModal />
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, scale: 0.98, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 1.02, y: -10 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            style={{ flex: 1 }}
-          >
-            {renderScreen()}
-          </motion.div>
-        </AnimatePresence>
-        <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
-      </div>
+      <MainContent />
     </AppProvider>
   );
-}
+};
 
 export default App;

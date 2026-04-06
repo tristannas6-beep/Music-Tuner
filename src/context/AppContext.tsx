@@ -8,6 +8,13 @@ export interface TuningInfo {
   notes: string[];
 }
 
+export interface MetronomePreset {
+  id: string;
+  name: string;
+  bpm: number;
+  subdivision: string;
+}
+
 interface AppState {
   selectedInstrument: InstrumentType;
   activeTuning: TuningInfo;
@@ -16,6 +23,12 @@ interface AppState {
   noteNaming: 'Letters' | 'Solfege';
   isAutoMode: boolean;
   selectedStringIndex: number | null;
+  // Pro Suite Additions
+  hapticsEnabled: boolean;
+  isOutdoorMode: boolean;
+  strobeMode: boolean;
+  metronomeSetlist: MetronomePreset[];
+  earTrainingScore: number;
 }
 
 interface AppContextType extends AppState {
@@ -26,6 +39,13 @@ interface AppContextType extends AppState {
   setNoteNaming: (naming: 'Letters' | 'Solfege') => Promise<void>;
   setIsAutoMode: (val: boolean) => Promise<void>;
   setSelectedStringIndex: (idx: number | null) => Promise<void>;
+  // Pro Suite Setters
+  setHapticsEnabled: (val: boolean) => Promise<void>;
+  setIsOutdoorMode: (val: boolean) => Promise<void>;
+  setStrobeMode: (val: boolean) => Promise<void>;
+  saveMetronomePreset: (preset: Omit<MetronomePreset, 'id'>) => Promise<void>;
+  deleteMetronomePreset: (id: string) => Promise<void>;
+  updateEarTrainingScore: (score: number) => Promise<void>;
   isLoaded: boolean;
 }
 
@@ -34,6 +54,8 @@ const tunings: Record<InstrumentType, TuningInfo[]> = {
     { name: 'Standard', notes: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
     { name: 'Drop D', notes: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
     { name: 'Half Step Down', notes: ['Eb2', 'Ab2', 'Db3', 'Gb3', 'Bb3', 'Eb4'] },
+    { name: 'DADGAD', notes: ['D2', 'A2', 'D3', 'G3', 'A3', 'D4'] },
+    { name: 'Open G', notes: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'] },
   ],
   Bass: [
     { name: 'Standard', notes: ['E1', 'A1', 'D2', 'G2'] },
@@ -41,6 +63,7 @@ const tunings: Record<InstrumentType, TuningInfo[]> = {
   ],
   Ukulele: [
     { name: 'Standard (gCEA)', notes: ['G4', 'C4', 'E4', 'A4'] },
+    { name: 'Low G', notes: ['G3', 'C4', 'E4', 'A4'] },
   ],
   Violin: [
     { name: 'Standard', notes: ['G3', 'D4', 'A4', 'E5'] },
@@ -49,7 +72,7 @@ const tunings: Record<InstrumentType, TuningInfo[]> = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'music_tuner_settings';
+const STORAGE_KEY = 'music_tuner_settings_v3';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -60,6 +83,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [noteNaming, setNoteNaming] = useState<'Letters' | 'Solfege'>('Letters');
   const [isAutoMode, setIsAutoMode] = useState(true);
   const [selectedStringIndex, setSelectedStringIndex] = useState<number | null>(null);
+  
+  // Pro Suite State
+  const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const [isOutdoorMode, setIsOutdoorMode] = useState(false);
+  const [strobeMode, setStrobeMode] = useState(false);
+  const [metronomeSetlist, setMetronomeSetlist] = useState<MetronomePreset[]>([]);
+  const [earTrainingScore, setEarTrainingScore] = useState(0);
 
   // Load state from Preferences on mount
   useEffect(() => {
@@ -75,6 +105,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (saved.noteNaming) setNoteNaming(saved.noteNaming);
           if (saved.isAutoMode !== undefined) setIsAutoMode(saved.isAutoMode);
           if (saved.selectedStringIndex !== undefined) setSelectedStringIndex(saved.selectedStringIndex);
+          
+          // Pro suite fields
+          if (saved.hapticsEnabled !== undefined) setHapticsEnabled(saved.hapticsEnabled);
+          if (saved.isOutdoorMode !== undefined) setIsOutdoorMode(saved.isOutdoorMode);
+          if (saved.strobeMode !== undefined) setStrobeMode(saved.strobeMode);
+          if (saved.metronomeSetlist) setMetronomeSetlist(saved.metronomeSetlist);
+          if (saved.earTrainingScore !== undefined) setEarTrainingScore(saved.earTrainingScore);
         }
       } catch (e) {
         console.error('Failed to load settings', e);
@@ -94,7 +131,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       theme,
       noteNaming,
       isAutoMode,
-      selectedStringIndex
+      selectedStringIndex,
+      hapticsEnabled,
+      isOutdoorMode,
+      strobeMode,
+      metronomeSetlist,
+      earTrainingScore
     };
     const newState = { ...current, ...updates };
     await Preferences.set({
@@ -107,13 +149,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const defaultTuning = tunings[inst][0];
     setSelectedInstrument(inst);
     setActiveTuning(defaultTuning);
-    setSelectedStringIndex(null); // Reset selection
+    setSelectedStringIndex(null);
     await saveSettings({ selectedInstrument: inst, activeTuning: defaultTuning, selectedStringIndex: null });
   };
 
   const setTuning = async (tuning: TuningInfo) => {
     setActiveTuning(tuning);
-    setSelectedStringIndex(null); // Reset selection
+    setSelectedStringIndex(null);
     await saveSettings({ activeTuning: tuning, selectedStringIndex: null });
   };
 
@@ -144,6 +186,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await saveSettings({ selectedStringIndex: idx, isAutoMode: idx !== null ? false : isAutoMode });
   };
 
+  // Pro Suite Setters
+  const updateHaptics = async (val: boolean) => {
+    setHapticsEnabled(val);
+    await saveSettings({ hapticsEnabled: val });
+  };
+
+  const updateOutdoorMode = async (val: boolean) => {
+    setIsOutdoorMode(val);
+    await saveSettings({ isOutdoorMode: val });
+  };
+
+  const updateStrobeMode = async (val: boolean) => {
+    setStrobeMode(val);
+    await saveSettings({ strobeMode: val });
+  };
+
+  const saveMetronomePreset = async (preset: Omit<MetronomePreset, 'id'>) => {
+    const newPreset = { ...preset, id: Date.now().toString() };
+    const newList = [...metronomeSetlist, newPreset];
+    setMetronomeSetlist(newList);
+    await saveSettings({ metronomeSetlist: newList });
+  };
+
+  const deleteMetronomePreset = async (id: string) => {
+    const newList = metronomeSetlist.filter(p => p.id !== id);
+    setMetronomeSetlist(newList);
+    await saveSettings({ metronomeSetlist: newList });
+  };
+
+  const updateEarTrainingScore = async (score: number) => {
+    setEarTrainingScore(score);
+    await saveSettings({ earTrainingScore: score });
+  };
+
   return (
     <AppContext.Provider value={{
       selectedInstrument,
@@ -153,6 +229,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       noteNaming,
       isAutoMode,
       selectedStringIndex,
+      hapticsEnabled,
+      isOutdoorMode,
+      strobeMode,
+      metronomeSetlist,
+      earTrainingScore,
       isLoaded,
       setInstrument,
       setTuning,
@@ -161,6 +242,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setNoteNaming: updateNoteNaming,
       setIsAutoMode: updateAutoMode,
       setSelectedStringIndex: updateSelectedString,
+      setHapticsEnabled: updateHaptics,
+      setIsOutdoorMode: updateOutdoorMode,
+      setStrobeMode: updateStrobeMode,
+      saveMetronomePreset,
+      deleteMetronomePreset,
+      updateEarTrainingScore,
     }}>
       {children}
     </AppContext.Provider>

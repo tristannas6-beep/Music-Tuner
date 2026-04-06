@@ -21,6 +21,22 @@
   --glass-border: rgba(255, 255, 255, 0.08);
 }
 
+/* OUTDOOR MODE (High Contrast) */
+[data-theme='outdoor'] {
+  --bg-color: #FFFFFF;
+  --bg-card: #F1F5F9;
+  --text-primary: #000000;
+  --text-secondary: #475569;
+  
+  --color-accent: #000000;
+  --color-success: #008000;
+  --color-danger: #FF0000;
+  --color-warning: #FF8C00;
+  
+  --glass-bg: rgba(0, 0, 0, 0.05);
+  --glass-border: rgba(0, 0, 0, 0.2);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -63,6 +79,12 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
+[data-theme='outdoor'] .glass-premium {
+  background: #FFFFFF;
+  box-shadow: none;
+  border-width: 2px;
+}
+
 .glass-pill {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(12px);
@@ -92,9 +114,20 @@ body {
   box-shadow: 0 0 15px rgba(34, 211, 238, 0.4);
 }
 
+[data-theme='outdoor'] .neon-glow-cyan {
+  box-shadow: none;
+  border: 2px solid #000;
+}
+
 .neon-glow-emerald {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
   filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.6));
+}
+
+[data-theme='outdoor'] .neon-glow-emerald {
+  box-shadow: none;
+  filter: none;
+  border: 2px solid #008000;
 }
 
 .string-glow {

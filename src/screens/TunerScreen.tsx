@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArcGauge } from '../components/ArcGauge';
-import { ChevronDown, Activity } from 'lucide-react';
+import { ChevronDown, Activity, Sun, Zap, Disc } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { InstrumentBS } from '../components/InstrumentBS';
 import { useTuner } from '../hooks/useTuner';
 import { WaveformVisualizer } from '../components/WaveformVisualizer';
 
 /**
- * TunerScreen - High-Fidelity Elite Edition v2.0
- * Features: Arc SVG Gauge, Metallic String Visualizer, Waveform Analytics.
+ * TunerScreen - Pro Suite V3.0.0
+ * Features: Strobe Mode, Outdoor Mode, High-Contrast Visualization.
  */
 
 export const TunerScreen: React.FC = () => {
@@ -21,7 +21,12 @@ export const TunerScreen: React.FC = () => {
     isAutoMode,
     selectedStringIndex,
     setIsAutoMode,
-    setSelectedStringIndex
+    setSelectedStringIndex,
+    hapticsEnabled,
+    isOutdoorMode,
+    setIsOutdoorMode,
+    strobeMode,
+    setStrobeMode
   } = useAppContext();
 
   const targetNote = (selectedStringIndex !== null) 
@@ -34,8 +39,9 @@ export const TunerScreen: React.FC = () => {
     isDetecting, 
     startTuning, 
     stopTuning,
-    analyser
-  } = useTuner(a4Calibration, noteNaming, targetNote);
+    analyser,
+    strobeAngle
+  } = useTuner(a4Calibration, noteNaming, targetNote, hapticsEnabled);
   
   const [isBSOpen, setIsBSOpen] = useState(false);
 
@@ -44,79 +50,105 @@ export const TunerScreen: React.FC = () => {
     else startTuning();
   };
 
-  const isPerfect = Math.abs(cents) < 3;
+  const isPerfect = Math.abs(cents) < 2.5;
   const status = !isDetecting ? 'idle' : (isPerfect ? 'perfect' : 'detecting');
 
   return (
-    <div className="screen-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="screen-container" data-theme={isOutdoorMode ? 'outdoor' : 'dark'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
-      {/* 1. Header: Glass-Pill Selector */}
-      <motion.button 
-        whileTap={{ scale: 0.95 }}
-        className="glass-pill"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 20px',
-          marginTop: '10px',
-          zIndex: 10
-        }}
-        onClick={() => setIsBSOpen(true)}
-      >
-        <div style={{ textAlign: 'left' }}>
-          <p className="label-text" style={{ fontSize: '9px', marginBottom: '1px' }}>
-            {selectedInstrument}
-          </p>
-          <p style={{ fontWeight: 700, fontSize: '14px', color: 'white' }}>{activeTuning.name}</p>
-        </div>
-        <ChevronDown size={16} color="var(--color-accent)" />
-      </motion.button>
+      {/* 1. Pro Header Controls */}
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', zIndex: 20 }}>
+        <button 
+          onClick={() => setIsOutdoorMode(!isOutdoorMode)}
+          className="glass-pill"
+          style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: isOutdoorMode ? 'var(--color-warning)' : 'var(--glass-border)' }}
+        >
+          <Sun size={18} color={isOutdoorMode ? 'var(--color-warning)' : 'var(--text-secondary)'} />
+        </button>
 
-      {/* 2. Main Analytics Area */}
+        <motion.button 
+          whileTap={{ scale: 0.95 }}
+          className="glass-pill"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px' }}
+          onClick={() => setIsBSOpen(true)}
+        >
+          <div style={{ textAlign: 'left' }}>
+            <p className="label-text" style={{ fontSize: '8px' }}>{selectedInstrument}</p>
+            <p style={{ fontWeight: 700, fontSize: '13px' }}>{activeTuning.name}</p>
+          </div>
+          <ChevronDown size={14} color="var(--color-accent)" />
+        </motion.button>
+
+        <button 
+          onClick={() => setStrobeMode(!strobeMode)}
+          className="glass-pill"
+          style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: strobeMode ? 'var(--color-accent)' : 'var(--glass-border)' }}
+        >
+          {strobeMode ? <Zap size={18} color="var(--color-accent)" /> : <Disc size={18} color="var(--text-secondary)" />}
+        </button>
+      </div>
+
+      {/* 2. Tuner Visualization Area */}
       <div 
         style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}
         onClick={toggleListening}
       >
-        <ArcGauge 
-          cents={cents} 
-          status={status} 
-          note={status === 'idle' ? '--' : note} 
-        />
+        <AnimatePresence mode="wait">
+          {!strobeMode ? (
+            <motion.div 
+              key="arc"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.1 }}
+            >
+              <ArcGauge cents={cents} status={status} note={status === 'idle' ? '--' : note} />
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="strobe"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.1 }}
+              style={{ position: 'relative', width: '300px', height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+               {/* Strobe Disk Visualizer */}
+               <div style={{ position: 'absolute', inset: 0, border: '2px solid var(--glass-border)', borderRadius: '50%' }} />
+               <motion.div
+                 style={{
+                   width: '240px',
+                   height: '240px',
+                   borderRadius: '50%',
+                   border: '8px dashed var(--color-accent)',
+                   opacity: isDetecting ? 0.8 : 0.1,
+                   rotate: strobeAngle
+                 }}
+               />
+               <motion.div
+                 style={{
+                   position: 'absolute',
+                   width: '180px',
+                   height: '180px',
+                   borderRadius: '50%',
+                   border: '12px dashed var(--color-accent)',
+                   opacity: isDetecting ? 0.4 : 0.05,
+                   rotate: -strobeAngle * 1.5
+                 }}
+               />
+               
+               <div style={{ position: 'absolute', zIndex: 10, textAlign: 'center' }}>
+                  <h1 className="huge-text" style={{ fontSize: '72px', color: isPerfect ? 'var(--color-success)' : 'white' }}>{status === 'idle' ? '--' : note}</h1>
+                  <p className="label-text" style={{ fontSize: '10px', color: isPerfect ? 'var(--color-success)' : 'var(--text-secondary)' }}>
+                    {isPerfect ? 'STROBE LOCKED' : 'ANALYZING...'}
+                  </p>
+               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
-        {/* Analytics Waveform */}
-        <div style={{ width: '85%', marginTop: '30px', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', opacity: 0.5 }}>
-             <Activity size={12} className={isDetecting ? 'neon-glow-cyan' : ''} />
-             <span className="label-text" style={{ fontSize: '9px' }}>
-               SIGNAL STRENGTH / ANALYTICS
-             </span>
-          </div>
-          <div className="glass-premium" style={{ borderRadius: '16px', padding: '10px', overflow: 'hidden' }}>
-            <WaveformVisualizer 
-              analyser={analyser} 
-              isDetecting={isDetecting} 
-              color={isDetecting ? (isPerfect ? 'var(--color-success)' : 'var(--color-accent)') : 'rgba(255,255,255,0.05)'} 
-            />
-          </div>
-          
-          {/* Target / Auto Badge */}
-          <div style={{ position: 'absolute', top: '-10px', right: '0' }}>
-            <span className="label-text" style={{ 
-              fontSize: '8px', 
-              padding: '4px 8px', 
-              borderRadius: '4px',
-              backgroundColor: isAutoMode ? 'rgba(34, 211, 238, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-              color: isAutoMode ? 'var(--color-accent)' : 'var(--color-warning)',
-              border: `1px solid ${isAutoMode ? 'rgba(34, 211, 238, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`
-            }}>
-              {isAutoMode ? 'AUTO-TRACKING' : 'MANUAL LOCK'}
-            </span>
-          </div>
-        </div>
+        {/* Analytics Mode Toggle In Footer */}
       </div>
 
-      {/* 3. FOOTER: Metallic String Visualizer */}
+      {/* 3. Footer: Metallic Strings */}
       <div style={{ width: '100%', marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'flex-end', height: '60px' }}>
           {activeTuning.notes.map((s, i) => {
@@ -125,21 +157,19 @@ export const TunerScreen: React.FC = () => {
             
             return (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                {/* Visual String */}
                 <div style={{ position: 'relative', width: '2px', height: '40px', backgroundColor: 'transparent' }}>
-                   {/* String Body */}
                    <motion.div 
                      animate={{
                         x: isNoteMatch ? [0, -1, 1, -1, 0] : 0,
-                        backgroundColor: isNoteMatch ? 'var(--color-accent)' : 'rgba(255,255,255,0.2)',
-                        boxShadow: isNoteMatch ? '0 0 10px rgba(34, 211, 238, 0.8)' : 'none'
+                        backgroundColor: isNoteMatch ? 'var(--color-accent)' : 'rgba(128,128,128,0.3)',
+                        boxShadow: (isNoteMatch && !isOutdoorMode) ? '0 0 10px rgba(34, 211, 238, 0.8)' : 'none'
                      }}
                      transition={{ repeat: isNoteMatch ? Infinity : 0, duration: 0.1 }}
                      style={{
-                       width: `${2 + (5-i)*0.5}px`, // Thicker strings for lower notes
+                       width: `${2 + (5-i)*0.5}px`,
                        height: '100%',
                        borderRadius: '2px',
-                       background: 'linear-gradient(to bottom, #71717A, #E2E8F0, #71717A)',
+                       background: isOutdoorMode ? '#000' : 'linear-gradient(to bottom, #71717A, #E2E8F0, #71717A)',
                      }}
                    />
                 </div>
@@ -153,15 +183,14 @@ export const TunerScreen: React.FC = () => {
                     height: '42px',
                     borderRadius: '50%',
                     border: '1px solid',
-                    borderColor: isActive ? 'var(--color-accent)' : 'rgba(255, 255, 255, 0.05)',
-                    backgroundColor: isActive ? 'rgba(34, 211, 238, 0.1)' : 'rgba(255, 255, 255, 0.02)',
+                    borderColor: isActive ? 'var(--color-accent)' : 'var(--glass-border)',
+                    backgroundColor: isActive ? 'rgba(34, 211, 238, 0.1)' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: '14px',
                     fontWeight: 800,
                     color: isActive ? 'var(--color-accent)' : 'var(--text-secondary)',
-                    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                   }}
                 >
                   {s.replace(/\d+$/, '')}
@@ -171,41 +200,15 @@ export const TunerScreen: React.FC = () => {
           })}
         </div>
         
-        {/* Premium Toggle */}
         <div 
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}
           onClick={() => setIsAutoMode(!isAutoMode)}
         >
-          <span className="label-text" style={{ fontSize: '10px', color: isAutoMode ? 'var(--color-accent)' : 'var(--text-secondary)' }}>
-            AUTO
-          </span>
-          <div 
-            className="glass-pill"
-            style={{
-              width: '44px',
-              height: '24px',
-              padding: '3px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: isAutoMode ? 'flex-start' : 'flex-end',
-              cursor: 'pointer',
-              border: isAutoMode ? '1px solid rgba(34, 211, 238, 0.3)' : '1px solid transparent'
-            }}>
-            <motion.div 
-              layout
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              style={{
-                width: '16px',
-                height: '16px',
-                backgroundColor: isAutoMode ? 'var(--color-accent)' : 'var(--text-secondary)',
-                borderRadius: '50%',
-                boxShadow: isAutoMode ? '0 0 10px var(--color-accent)' : 'none'
-              }} 
-            />
+          <span className="label-text" style={{ fontSize: '10px' }}>AUTO</span>
+          <div className="glass-pill" style={{ width: '44px', height: '24px', padding: '3px', display: 'flex', alignItems: 'center', justifyContent: isAutoMode ? 'flex-start' : 'flex-end', cursor: 'pointer' }}>
+            <motion.div layout transition={{ type: "spring", stiffness: 500, damping: 30 }} style={{ width: '16px', height: '16px', backgroundColor: isAutoMode ? 'var(--color-accent)' : 'var(--text-secondary)', borderRadius: '50%' }} />
           </div>
-          <span className="label-text" style={{ fontSize: '10px', color: !isAutoMode ? 'var(--color-warning)' : 'var(--text-secondary)', opacity: !isAutoMode ? 1 : 0.5 }}>
-            MANUAL
-          </span>
+          <span className="label-text" style={{ fontSize: '10px', opacity: !isAutoMode ? 1 : 0.5 }}>MANUAL</span>
         </div>
       </div>
 
