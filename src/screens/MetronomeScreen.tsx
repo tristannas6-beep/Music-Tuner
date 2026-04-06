@@ -110,7 +110,7 @@ export const MetronomeScreen: React.FC = () => {
         <div style={{ display: 'flex', gap: '12px' }}>
            <div className="glass-pill" style={{ flex: 1, display: 'flex', padding: '4px', height: '48px', alignItems: 'center' }}>
               <input 
-                placeholder="Presal Name..." 
+                placeholder="Preset Name..." 
                 value={newPresetName}
                 onChange={(e) => setNewPresetName(e.target.value)}
                 style={{ flex: 1, background: 'none', border: 'none', color: 'white', padding: '0 16px', outline: 'none', fontSize: '13px' }} 
