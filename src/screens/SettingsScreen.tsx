@@ -4,9 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { 
   ChevronRight, 
   Volume2, 
-  Palette, 
   Globe, 
-  ShieldCheck, 
   Zap,
   Smartphone,
   Sun,
@@ -21,8 +19,6 @@ import {
 export const SettingsScreen: React.FC = () => {
   const { 
     a4Calibration, setA4Calibration,
-    theme, setTheme,
-    noteNaming, setNoteNaming,
     hapticsEnabled, setHapticsEnabled,
     isOutdoorMode, setIsOutdoorMode,
     strobeMode, setStrobeMode,

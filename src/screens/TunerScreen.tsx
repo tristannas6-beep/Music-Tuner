@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArcGauge } from '../components/ArcGauge';
-import { ChevronDown, Activity, Sun, Zap, Disc } from 'lucide-react';
+import { ChevronDown, Sun, Zap, Disc } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { InstrumentBS } from '../components/InstrumentBS';
 import { useTuner } from '../hooks/useTuner';
-import { WaveformVisualizer } from '../components/WaveformVisualizer';
 
 /**
  * TunerScreen - Pro Suite V3.0.0
@@ -39,7 +38,6 @@ export const TunerScreen: React.FC = () => {
     isDetecting, 
     startTuning, 
     stopTuning,
-    analyser,
     strobeAngle
   } = useTuner(a4Calibration, noteNaming, targetNote, hapticsEnabled);
   
