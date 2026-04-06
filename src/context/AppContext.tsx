@@ -14,6 +14,8 @@ interface AppState {
   a4Calibration: number;
   theme: 'dark' | 'light';
   noteNaming: 'Letters' | 'Solfege';
+  isAutoMode: boolean;
+  selectedStringIndex: number | null;
 }
 
 interface AppContextType extends AppState {
@@ -22,6 +24,8 @@ interface AppContextType extends AppState {
   setA4Calibration: (val: number) => Promise<void>;
   setTheme: (theme: 'dark' | 'light') => Promise<void>;
   setNoteNaming: (naming: 'Letters' | 'Solfege') => Promise<void>;
+  setIsAutoMode: (val: boolean) => Promise<void>;
+  setSelectedStringIndex: (idx: number | null) => Promise<void>;
   isLoaded: boolean;
 }
 
@@ -54,6 +58,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [a4Calibration, setA4Calibration] = useState(440);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [noteNaming, setNoteNaming] = useState<'Letters' | 'Solfege'>('Letters');
+  const [isAutoMode, setIsAutoMode] = useState(true);
+  const [selectedStringIndex, setSelectedStringIndex] = useState<number | null>(null);
 
   // Load state from Preferences on mount
   useEffect(() => {
@@ -67,6 +73,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (saved.a4Calibration) setA4Calibration(saved.a4Calibration);
           if (saved.theme) setTheme(saved.theme);
           if (saved.noteNaming) setNoteNaming(saved.noteNaming);
+          if (saved.isAutoMode !== undefined) setIsAutoMode(saved.isAutoMode);
+          if (saved.selectedStringIndex !== undefined) setSelectedStringIndex(saved.selectedStringIndex);
         }
       } catch (e) {
         console.error('Failed to load settings', e);
@@ -84,7 +92,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       activeTuning,
       a4Calibration,
       theme,
-      noteNaming
+      noteNaming,
+      isAutoMode,
+      selectedStringIndex
     };
     const newState = { ...current, ...updates };
     await Preferences.set({
@@ -97,12 +107,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const defaultTuning = tunings[inst][0];
     setSelectedInstrument(inst);
     setActiveTuning(defaultTuning);
-    await saveSettings({ selectedInstrument: inst, activeTuning: defaultTuning });
+    setSelectedStringIndex(null); // Reset selection
+    await saveSettings({ selectedInstrument: inst, activeTuning: defaultTuning, selectedStringIndex: null });
   };
 
   const setTuning = async (tuning: TuningInfo) => {
     setActiveTuning(tuning);
-    await saveSettings({ activeTuning: tuning });
+    setSelectedStringIndex(null); // Reset selection
+    await saveSettings({ activeTuning: tuning, selectedStringIndex: null });
   };
 
   const updateA4Calibration = async (val: number) => {
@@ -120,6 +132,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await saveSettings({ noteNaming: naming });
   };
 
+  const updateAutoMode = async (val: boolean) => {
+    setIsAutoMode(val);
+    if (val) setSelectedStringIndex(null);
+    await saveSettings({ isAutoMode: val, selectedStringIndex: val ? null : selectedStringIndex });
+  };
+
+  const updateSelectedString = async (idx: number | null) => {
+    setSelectedStringIndex(idx);
+    if (idx !== null) setIsAutoMode(false);
+    await saveSettings({ selectedStringIndex: idx, isAutoMode: idx !== null ? false : isAutoMode });
+  };
+
   return (
     <AppContext.Provider value={{
       selectedInstrument,
@@ -127,12 +151,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       a4Calibration,
       theme,
       noteNaming,
+      isAutoMode,
+      selectedStringIndex,
       isLoaded,
       setInstrument,
       setTuning,
       setA4Calibration: updateA4Calibration,
       setTheme: updateTheme,
       setNoteNaming: updateNoteNaming,
+      setIsAutoMode: updateAutoMode,
+      setSelectedStringIndex: updateSelectedString,
     }}>
       {children}
     </AppContext.Provider>

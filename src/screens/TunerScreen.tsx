@@ -8,7 +8,22 @@ import { useTuner } from '../hooks/useTuner';
 import { WaveformVisualizer } from '../components/WaveformVisualizer';
 
 export const TunerScreen: React.FC = () => {
-  const { activeTuning, selectedInstrument, a4Calibration, noteNaming } = useAppContext();
+  const { 
+    activeTuning, 
+    selectedInstrument, 
+    a4Calibration, 
+    noteNaming,
+    isAutoMode,
+    selectedStringIndex,
+    setIsAutoMode,
+    setSelectedStringIndex
+  } = useAppContext();
+
+  // Calculate target note if in Manual mode
+  const targetNote = (selectedStringIndex !== null) 
+    ? activeTuning.notes[selectedStringIndex] 
+    : null;
+
   const { 
     note, 
     cents, 
@@ -16,7 +31,7 @@ export const TunerScreen: React.FC = () => {
     startTuning, 
     stopTuning,
     analyser
-  } = useTuner(a4Calibration, noteNaming);
+  } = useTuner(a4Calibration, noteNaming, targetNote);
   
   const [isBSOpen, setIsBSOpen] = useState(false);
 
@@ -71,13 +86,13 @@ export const TunerScreen: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', opacity: 0.4 }}>
              <Activity size={12} />
              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em' }} className="label-text">
-               REAL-TIME ANALYTICS
+               {isAutoMode ? 'AUTO ANALYTICS' : 'LOCKED TARGET'}
              </span>
           </div>
           <WaveformVisualizer 
             analyser={analyser} 
             isDetecting={isDetecting} 
-            color={isDetecting ? (isPerfect ? '#2ECC40' : '#0074D9') : 'rgba(255,255,255,0.1)'} 
+            color={isDetecting ? (isPerfect ? '#2ECC40' : (isAutoMode ? '#0074D9' : '#FF851B')) : 'rgba(255,255,255,0.1)'} 
           />
         </div>
       </div>
@@ -85,55 +100,73 @@ export const TunerScreen: React.FC = () => {
       {/* Footer / String Reference */}
       <div style={{ width: '100%', marginBottom: '40px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-          {activeTuning.notes.map((s, i) => (
-            <motion.div
-              key={i}
-              initial={false}
-              animate={{
-                borderColor: note.startsWith(s.charAt(0)) ? 'var(--color-accent)' : 'rgba(255, 255, 255, 0.1)',
-                backgroundColor: note.startsWith(s.charAt(0)) ? 'rgba(0, 116, 217, 0.1)' : 'transparent',
-              }}
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '50%',
-                border: '2px solid',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '14px',
-                fontWeight: 800,
-                color: note.startsWith(s.charAt(0)) ? 'var(--color-accent)' : 'var(--text-secondary)',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              {s.includes('#') ? s.substring(0, 2) : s.charAt(0)}
-            </motion.div>
-          ))}
+          {activeTuning.notes.map((s, i) => {
+            const isActive = selectedStringIndex === i;
+            // Clean note for display (remove octave)
+            const displayNote = s.replace(/\d+$/, '');
+            
+            return (
+              <motion.button
+                key={i}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setSelectedStringIndex(i)}
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  border: '2px solid',
+                  borderColor: isActive ? 'var(--color-accent)' : 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: isActive ? 'rgba(0, 116, 217, 0.2)' : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  color: isActive ? 'var(--color-accent)' : 'var(--text-secondary)',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                {displayNote}
+              </motion.button>
+            );
+          })}
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-          <span className="label-text" style={{ fontSize: '11px' }}>AUTO MODE</span>
+        {/* Auto/Manual Toggle */}
+        <div 
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}
+          onClick={() => setIsAutoMode(!isAutoMode)}
+        >
+          <span className="label-text" style={{ fontSize: '11px', color: isAutoMode ? 'var(--color-accent)' : 'var(--text-secondary)' }}>
+            AUTO
+          </span>
           <div style={{
             width: '40px',
             height: '20px',
-            backgroundColor: 'var(--color-accent)',
+            backgroundColor: 'rgba(255,255,255,0.1)',
             borderRadius: '10px',
             padding: '2px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'flex-start',
-            cursor: 'pointer'
+            justifyContent: isAutoMode ? 'flex-start' : 'flex-end',
+            cursor: 'pointer',
+            border: isAutoMode ? '1px solid var(--color-accent)' : '1px solid transparent'
           }}>
-            <motion.div style={{
-              width: '16px',
-              height: '16px',
-              backgroundColor: 'white',
-              borderRadius: '50%',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-            }} />
+            <motion.div 
+              layout
+              transition={{ type: "spring", stiffness: 700, damping: 30 }}
+              style={{
+                width: '14px',
+                height: '14px',
+                backgroundColor: isAutoMode ? 'var(--color-accent)' : 'var(--text-secondary)',
+                borderRadius: '50%',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }} 
+            />
           </div>
-          <span className="label-text" style={{ opacity: 0.3, fontSize: '11px' }}>MANUAL</span>
+          <span className="label-text" style={{ fontSize: '11px', color: !isAutoMode ? '#FF851B' : 'var(--text-secondary)', opacity: !isAutoMode ? 1 : 0.4 }}>
+            MANUAL
+          </span>
         </div>
       </div>
 

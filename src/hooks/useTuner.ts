@@ -3,12 +3,11 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
  * useTuner - Advanced DSP pitch detection hook.
- * Features: HPF, Hann Window, Zero-Padding, YIN with Parabolic Interpolation, 
- * EMA smoothing, Native Haptic Feedback, and Solfege support.
+ * Updated to support Manual Mode (Target Pitch Locking).
  */
 
 interface TunerState {
-  pitch: number; // Sub-sample accurate frequency in Hz
+  pitch: number; 
   note: string;
   cents: number;
   isDetecting: boolean;
@@ -18,14 +17,15 @@ interface TunerState {
 const LETTERS_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const SOLFEGE_NOTES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
 
-// Professional EMA Alpha (0.2 is "fast yet solid")
 const EMA_ALPHA_CENTS = 0.2;
 const EMA_ALPHA_PITCH = 0.15;
-
-// Haptic throttle
 const HAPTIC_COOLDOWN_MS = 2000;
 
-export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'Solfege' = 'Letters') => {
+export const useTuner = (
+  a4Calibration: number = 440, 
+  noteNaming: 'Letters' | 'Solfege' = 'Letters',
+  targetNote: string | null = null
+) => {
   const [state, setState] = useState<TunerState>({
     pitch: 0,
     note: '--',
@@ -39,15 +39,10 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
   const streamRef = useRef<MediaStream | null>(null);
   const rafIdRef = useRef<number | null>(null);
   
-  // EMA State persistence
   const emaCentsRef = useRef(0);
   const emaPitchRef = useRef(0);
-  
-  // Filter state for 1st-order HPF
   const lastSampleRef = useRef(0);
   const lastOutputRef = useRef(0);
-
-  // Haptic state
   const lastHapticTimeRef = useRef(0);
 
   const startTuning = async () => {
@@ -64,7 +59,7 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
       }
 
       analyserRef.current = audioContextRef.current.createAnalyser();
-      analyserRef.current.fftSize = 4096; // 4096 base window
+      analyserRef.current.fftSize = 4096;
       
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
@@ -89,32 +84,37 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
 
     const buffer = new Float32Array(analyserRef.current.fftSize);
     analyserRef.current.getFloatTimeDomainData(buffer);
-
     const sampleRate = audioContextRef.current.sampleRate;
 
-    // 1. INPUT PRE-PROCESSING: 1st-Order HPF
     const filteredBuffer = applyHighPassFilter(buffer, sampleRate, 40, lastSampleRef, lastOutputRef);
-
-    // 2. SIGNAL PREPARATION: Hann Windowing
     const windowedBuffer = applyHannWindow(filteredBuffer);
-
-    // 3. CORE PROCESSING: YIN with Sub-Sample Accuracy
     const { pitch, rms } = computeAdvancedPitchYIN(windowedBuffer, sampleRate);
 
-    // High resolution pitch detection with Noise Gate
     if (pitch !== -1 && rms > 0.01) {
-      const { note, exactCents } = frequencyToPitchData(pitch, a4Calibration, noteNaming);
+      let displayNote: string;
+      let exactCents: number;
 
-      // 5. OUTPUT STABILIZATION: EMA
+      if (targetNote) {
+        // MANUAL MODE: Calculate cents relative to a locked target
+        const targetHz = noteToFrequency(targetNote, a4Calibration);
+        exactCents = 1200 * Math.log2(pitch / targetHz);
+        displayNote = targetNote;
+      } else {
+        // AUTO MODE: Closest note detection
+        const data = frequencyToPitchData(pitch, a4Calibration, noteNaming);
+        displayNote = data.note;
+        exactCents = data.exactCents;
+      }
+
+      // EMA Stabilization
       emaPitchRef.current = emaPitchRef.current === 0 
         ? pitch 
         : (EMA_ALPHA_PITCH * pitch + (1 - EMA_ALPHA_PITCH) * emaPitchRef.current);
       
       emaCentsRef.current = (EMA_ALPHA_CENTS * exactCents + (1 - EMA_ALPHA_CENTS) * emaCentsRef.current);
-
       const finalCents = Math.round(emaCentsRef.current * 10) / 10;
 
-      // 6. NATIVE UX: Haptics on "Perfect"
+      // Haptics
       if (Math.abs(finalCents) < 3.0) {
         const now = Date.now();
         if (now - lastHapticTimeRef.current > HAPTIC_COOLDOWN_MS) {
@@ -126,7 +126,7 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
       setState(prev => ({
         ...prev,
         pitch: emaPitchRef.current,
-        note,
+        note: displayNote,
         cents: finalCents,
         rms
       }));
@@ -135,7 +135,7 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
     }
 
     rafIdRef.current = requestAnimationFrame(tick);
-  }, [a4Calibration, noteNaming]);
+  }, [a4Calibration, noteNaming, targetNote]);
 
   useEffect(() => {
     return () => {
@@ -146,6 +146,26 @@ export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'S
 
   return { ...state, startTuning, stopTuning, analyser: analyserRef.current };
 };
+
+/**
+ * DSP: Note String to Frequency
+ */
+function noteToFrequency(noteStr: string, a4: number) {
+  // Extract name and octave (e.g. "E4" -> "E", 4)
+  const match = noteStr.match(/^([A-Ga-g#b]+)(\d+)$/);
+  if (!match) return 440;
+  
+  const name = match[1].replace('b', '#'); // Simple normalization for b to # if needed
+  const octave = parseInt(match[2]);
+  
+  // Find semitone index relative to C
+  const noteIndex = LETTERS_NOTES.indexOf(name.toUpperCase());
+  if (noteIndex === -1) return 440;
+  
+  // MIDI number = (octave + 1) * 12 + noteIndex
+  const midi = (octave + 1) * 12 + noteIndex;
+  return a4 * Math.pow(2, (midi - 69) / 12);
+}
 
 /**
  * DSP: 1st-Order High Pass Filter
@@ -189,21 +209,15 @@ function applyHannWindow(buffer: Float32Array) {
 function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
   const threshold = 0.1;
   const size = buffer.length;
-  
-  // Zero Padding
   const paddedBuffer = new Float32Array(size * 2);
   paddedBuffer.set(buffer); 
   
-  const paddedSize = paddedBuffer.length;
-  const half = Math.floor(paddedSize / 2);
-  
-  // RMS Noise Gate
+  const half = Math.floor(paddedBuffer.length / 2);
   let sumSq = 0;
   for (let i = 0; i < size; i++) sumSq += buffer[i] * buffer[i];
   const rms = Math.sqrt(sumSq / size);
   if (rms < 0.005) return { pitch: -1, rms };
 
-  // 1. Squared Difference Function
   const yin = new Float32Array(half);
   for (let tau = 0; tau < half; tau++) {
     for (let i = 0; i < half; i++) {
@@ -212,7 +226,6 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
     }
   }
 
-  // 2. Cumulative Mean Normalized Difference
   yin[0] = 1;
   let runningSum = 0;
   for (let tau = 1; tau < half; tau++) {
@@ -220,7 +233,6 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
     yin[tau] *= tau / (runningSum || 1);
   }
 
-  // 3. Absolute Thresholding
   let tau = -1;
   for (let t = 2; t < half; t++) {
     if (yin[t] < threshold) {
@@ -230,7 +242,6 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
     }
   }
 
-  // Fallback to local minimum
   if (tau === -1) {
     let bestMin = 1;
     for (let t = 2; t < half; t++) {
@@ -239,7 +250,6 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
     if (bestMin > 0.4) return { pitch: -1, rms };
   }
 
-  // 4. Sub-Sample Accuracy (Parabolic Interpolation)
   let refinedTau = tau;
   if (tau > 0 && tau < half - 1) {
     const s0 = yin[tau - 1];
@@ -255,7 +265,7 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
 }
 
 /**
- * DSP: Frequency to Note/Cents calculation with Solfege support.
+ * DSP: Frequency to Note/Cents calculation
  */
 function frequencyToPitchData(hz: number, a4: number, noteNaming: 'Letters' | 'Solfege') {
   const h = 12 * (Math.log(hz / a4) / Math.log(2));
