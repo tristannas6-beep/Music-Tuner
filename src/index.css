@@ -1,17 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;600&display=swap');
 
 :root {
-  --bg-color: #121212;
-  --bg-card: #1e1e1e;
-  --text-primary: #ffffff;
-  --text-secondary: #808080;
-  --color-accent: #0074D9;
-  --color-success: #2ECC40;
-  --color-danger: #FF4136;
-  --color-warning: #FFDC00;
-  --font-main: 'Inter', sans-serif;
+  --bg-color: #0A0A0B;
+  --bg-card: rgba(20, 20, 22, 0.7);
+  --text-primary: #fcfcfc;
+  --text-secondary: #94A3B8;
+  
+  --color-accent: #22D3EE; /* Electric Cyan */
+  --color-success: #10B981; /* Emerald Green */
+  --color-danger: #F43F5E;
+  --color-warning: #F59E0B;
+  
+  --font-main: 'Outfit', sans-serif;
+  --font-accent: 'Inter', sans-serif;
   
   --safe-area-bottom: env(safe-area-inset-bottom, 24px);
+  
+  /* Glassmorphism settings */
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -19,54 +26,86 @@
   padding: 0;
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 body {
   font-family: var(--font-main);
   background-color: var(--bg-color);
+  background-image: 
+    radial-gradient(circle at 50% -20%, rgba(34, 211, 238, 0.05), transparent 60%),
+    radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.03), transparent 40%);
   color: var(--text-primary);
-  overflow: hidden; /* Mobile-like feel */
-  user-select: none;
+  overflow: hidden;
+  height: 100vh;
 }
 
 #root {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-button {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-family: inherit;
 }
 
 .screen-container {
   flex: 1;
   overflow-y: auto;
   position: relative;
-  padding: 20px;
-  padding-bottom: calc(84px + var(--safe-area-bottom)); /* Adjust for bottom nav */
+  padding: 24px;
+  padding-bottom: calc(100px + var(--safe-area-bottom));
 }
 
-/* Animations Helper */
-.glass {
+/* Glassmorphism Styles */
+.glass-premium {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-pill {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
 }
 
+/* Typography Styles */
 .huge-text {
-  font-size: 80px;
+  font-size: 110px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
 }
 
 .label-text {
-  font-size: 14px;
+  font-family: var(--font-accent);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.15em;
+}
+
+/* Visual FX */
+.neon-glow-cyan {
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.4);
+}
+
+.neon-glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+  filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.6));
+}
+
+.string-glow {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+}
+
+/* Scrollbar styling (for desktop testing) */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }

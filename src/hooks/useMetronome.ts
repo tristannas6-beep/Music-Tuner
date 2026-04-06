@@ -1,71 +1,113 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 /**
- * useMetronome - A high-precision metronome hook.
- * Uses the Web Audio API "Look-Ahead" scheduler to prevent beat drift.
+ * useMetronome - A professional-grade rhythmic engine.
+ * Supports Subdivisions, Sound Profiles, and Accents.
  */
 
-const LOOK_AHEAD_MS = 25.0; // How frequently to check for next notes
-const SCHEDULE_AHEAD_SEC = 0.1; // How far ahead to schedule sounds
+export type Subdivision = '1/4' | '1/8' | 'Triplet' | '1/16';
+export type SoundProfile = 'Digital' | 'Wood' | 'Cowbell';
+
+const LOOK_AHEAD_MS = 25.0;
+const SCHEDULE_AHEAD_SEC = 0.1;
 
 export const useMetronome = () => {
   const [bpm, setBpm] = useState(120);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(0);
+  const [currentSub, setCurrentSub] = useState(0);
+  const [subdivision, setSubdivision] = useState<Subdivision>('1/4');
+  const [soundProfile, setSoundProfile] = useState<SoundProfile>('Digital');
   const [tapTimes, setTapTimes] = useState<number[]>([]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
-  const nextNoteTimeRef = useRef(0.0); // When the next note is due
+  const nextNoteTimeRef = useRef(0.0);
   const timerIdRef = useRef<number | null>(null);
-  const beatRef = useRef(0);
+  const beatRef = useRef(0); // Main beats 0, 1, 2, 3
+  const subRef = useRef(0);  // Sub divisions
   const bpmRef = useRef(120);
+  const subTypeRef = useRef<Subdivision>('1/4');
 
-  // Update BPM ref to keep it in sync with state for the sound scheduler
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { subTypeRef.current = subdivision; }, [subdivision]);
 
-  const playClick = useCallback((time: number, isAccent: boolean) => {
+  const playClick = useCallback((time: number, isAccent: boolean, isSub: boolean) => {
     if (!audioContextRef.current) return;
 
     const osc = audioContextRef.current.createOscillator();
     const envelope = audioContextRef.current.createGain();
 
-    osc.type = 'triangle';
-    // Frequency: Accent 1000Hz, Normal 800Hz
-    osc.frequency.setValueAtTime(isAccent ? 1000 : 800, time);
+    // 1. SELECT FREQUENCY & TYPE BY PROFILE
+    let freq = isAccent ? 1200 : 800;
+    if (isSub) freq *= 0.8; // Lower pitch for subdivisions
+    
+    let type: OscillatorType = 'triangle';
+    let decay = 0.1;
 
-    envelope.gain.setValueAtTime(1, time);
-    envelope.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+    switch (soundProfile) {
+      case 'Wood':
+        osc.type = 'sine';
+        freq = isAccent ? 600 : 450;
+        if (isSub) freq *= 0.8;
+        decay = 0.05;
+        break;
+      case 'Cowbell':
+        osc.type = 'square';
+        freq = isAccent ? 800 : 600;
+        if (isSub) freq *= 0.8;
+        decay = 0.15;
+        break;
+      default: // Digital
+        osc.type = 'triangle';
+        break;
+    }
+
+    osc.frequency.setValueAtTime(freq, time);
+
+    // 2. ENVELOPE MODULATION
+    envelope.gain.setValueAtTime(isAccent ? 1 : 0.6, time);
+    envelope.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
     osc.connect(envelope);
     envelope.connect(audioContextRef.current.destination);
 
     osc.start(time);
-    osc.stop(time + 0.1);
-  }, []);
+    osc.stop(time + decay);
+  }, [soundProfile]);
 
   const scheduler = useCallback(() => {
     if (!audioContextRef.current) return;
 
-    // While there are notes that will need to play before the next check, schedule them
     while (nextNoteTimeRef.current < audioContextRef.current.currentTime + SCHEDULE_AHEAD_SEC) {
-      const isAccent = beatRef.current === 0;
+      const isAccent = beatRef.current === 0 && subRef.current === 0;
+      const isSub = subRef.current !== 0;
       
-      playClick(nextNoteTimeRef.current, isAccent);
+      playClick(nextNoteTimeRef.current, isAccent, isSub);
       
-      // Update UI state (sync with audio)
       const scheduledTime = nextNoteTimeRef.current;
       setTimeout(() => {
         if (isPlaying) {
           setCurrentBeat(beatRef.current);
+          setCurrentSub(subRef.current);
         }
       }, (scheduledTime - audioContextRef.current.currentTime) * 1000);
 
-      // Advance next note time
+      // Advance Timing based on Subdivision
       const secondsPerBeat = 60.0 / bpmRef.current;
-      nextNoteTimeRef.current += secondsPerBeat;
+      let notesPerBeat = 1;
       
-      // Cycle through beats (4/4 time assumed for this tuner)
-      beatRef.current = (beatRef.current + 1) % 4;
+      if (subTypeRef.current === '1/8') notesPerBeat = 2;
+      else if (subTypeRef.current === 'Triplet') notesPerBeat = 3;
+      else if (subTypeRef.current === '1/16') notesPerBeat = 4;
+
+      nextNoteTimeRef.current += secondsPerBeat / notesPerBeat;
+      
+      // Update beat logic
+      subRef.current++;
+      if (subRef.current >= notesPerBeat) {
+        subRef.current = 0;
+        beatRef.current = (beatRef.current + 1) % 4; // 4/4 Time
+      }
     }
 
     timerIdRef.current = window.setTimeout(scheduler, LOOK_AHEAD_MS);
@@ -76,7 +118,9 @@ export const useMetronome = () => {
       if (timerIdRef.current) clearTimeout(timerIdRef.current);
       setIsPlaying(false);
       setCurrentBeat(0);
+      setCurrentSub(0);
       beatRef.current = 0;
+      subRef.current = 0;
     } else {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -91,14 +135,10 @@ export const useMetronome = () => {
     }
   }, [isPlaying, scheduler]);
 
-  // Tap Tempo Implementation
   const tapTempo = useCallback(() => {
     const now = performance.now();
     const newTaps = [...tapTimes, now];
-    
-    // Keep only the last 4 taps
     if (newTaps.length > 4) newTaps.shift();
-    
     if (newTaps.length >= 2) {
       const diffs = [];
       for (let i = 1; i < newTaps.length; i++) {
@@ -106,12 +146,8 @@ export const useMetronome = () => {
       }
       const avgDiff = diffs.reduce((a, b) => a + b) / diffs.length;
       const calcBpm = Math.round(60000 / avgDiff);
-      
-      if (calcBpm >= 30 && calcBpm <= 300) {
-        setBpm(calcBpm);
-      }
+      if (calcBpm >= 30 && calcBpm <= 400) setBpm(calcBpm);
     }
-    
     setTapTimes(newTaps);
   }, [tapTimes]);
 
@@ -122,5 +158,12 @@ export const useMetronome = () => {
     };
   }, []);
 
-  return { bpm, setBpm, isPlaying, toggleMetronome, currentBeat, tapTempo };
+  return { 
+    bpm, setBpm, 
+    isPlaying, toggleMetronome, 
+    currentBeat, currentSub,
+    subdivision, setSubdivision,
+    soundProfile, setSoundProfile,
+    tapTempo 
+  };
 };
