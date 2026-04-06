@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Music2, Layers, Save, Trash2, ListMusic } from 'lucide-react';
-import { useMetronome, Subdivision, SoundProfile } from '../hooks/useMetronome';
+import { Play, Pause, ListMusic, Save, Trash2 } from 'lucide-react';
+import { useMetronome, type Subdivision } from '../hooks/useMetronome';
 import { useAppContext } from '../context/AppContext';
 
 /**
@@ -23,7 +23,6 @@ export const MetronomeScreen: React.FC = () => {
     isPlaying, toggleMetronome, 
     currentBeat, 
     subdivision, setSubdivision,
-    soundProfile, setSoundProfile,
     tapTempo 
   } = useMetronome(hapticsEnabled);
 
@@ -56,7 +55,6 @@ export const MetronomeScreen: React.FC = () => {
   };
 
   const subdivisions: Subdivision[] = ['1/4', '1/8', 'Triplet', '1/16'];
-  const soundProfiles: SoundProfile[] = ['Digital', 'Wood', 'Cowbell'];
 
   return (
     <div className="screen-container" data-theme={isOutdoorMode ? 'outdoor' : 'dark'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Check, Share2, Save, Trash2, ArrowLeft } from 'lucide-react';
+import { X, Plus, Share2, ArrowLeft } from 'lucide-react';
 import { useAppContext, type InstrumentType, type TuningInfo } from '../context/AppContext';
 
 /**

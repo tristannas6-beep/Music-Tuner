@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('tuner');
-  const { isLoaded, setTuning, isOutdoorMode } = useAppContext();
+  const { isLoaded, setTuning } = useAppContext();
   
   // Sleep Mode State
   const [isIdle, setIsIdle] = useState(false);
