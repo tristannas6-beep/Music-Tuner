@@ -25,7 +25,8 @@ export const TunerScreen: React.FC = () => {
     isOutdoorMode,
     setIsOutdoorMode,
     strobeMode,
-    setStrobeMode
+    setStrobeMode,
+    theme
   } = useAppContext();
 
   const targetNote = (selectedStringIndex !== null) 
@@ -52,8 +53,10 @@ export const TunerScreen: React.FC = () => {
   const isPerfect = Math.abs(cents) < 2.5;
   const status = !isDetecting ? 'idle' : (isPerfect ? 'perfect' : 'detecting');
 
+  const currentTheme = isOutdoorMode ? 'outdoor' : theme;
+
   return (
-    <div className="screen-container" data-theme={isOutdoorMode ? 'outdoor' : 'dark'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="screen-container" data-theme={currentTheme} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
       {/* 1. Pro Header Controls */}
       <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', zIndex: 20 }}>

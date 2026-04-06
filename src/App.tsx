@@ -8,13 +8,13 @@ import { AppProvider, useAppContext } from './context/AppContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
- * Main Content Component - Pro Suite V3.3.0
- * Features: Sleep Mode (Idle Detection), URL Tuning Importer, Tab Orchestration.
+ * Main Content Component - Pro Suite V3.3.1
+ * Features: Sleep Mode, URL Importer, Global Theme Orchestration.
  */
 
 const MainContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('tuner');
-  const { isLoaded, setTuning } = useAppContext();
+  const { isLoaded, setTuning, theme, isOutdoorMode } = useAppContext();
   
   // Sleep Mode State
   const [isIdle, setIsIdle] = useState(false);
@@ -33,7 +33,6 @@ const MainContent: React.FC = () => {
           const [name, notesStr] = content.split('|');
           const notes = notesStr.split(',');
           setTuning({ name: `Shared: ${name}`, notes });
-          // Clear URL
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       } catch (e) {
@@ -42,13 +41,13 @@ const MainContent: React.FC = () => {
     }
   }, [isLoaded, setTuning]);
 
-  // 2. Sleep Mode Logic (60s Idle)
+  // 2. Sleep Mode Logic
   const resetIdleTimer = () => {
     setIsIdle(false);
     if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
     idleTimerRef.current = window.setTimeout(() => {
       setIsIdle(true);
-    }, 60000); // 60 seconds
+    }, 60000);
   };
 
   useEffect(() => {
@@ -65,14 +64,21 @@ const MainContent: React.FC = () => {
 
   if (!isLoaded) return null;
 
+  // Determine actual rendered theme
+  const currentTheme = isOutdoorMode ? 'outdoor' : theme;
+
   return (
     <div 
+      data-theme={currentTheme}
+      className="main-app-shell"
       style={{ 
         height: '100%', 
         position: 'relative', 
         opacity: isIdle ? 0.4 : 1, 
-        transition: 'opacity 2s ease',
-        filter: isIdle ? 'blur(2px)' : 'none'
+        transition: 'opacity 2s ease, background-color 0.4s ease',
+        filter: isIdle ? 'blur(2px)' : 'none',
+        backgroundColor: 'var(--bg-color)',
+        color: 'var(--text-primary)'
       }}
     >
       <AnimatePresence mode="wait">

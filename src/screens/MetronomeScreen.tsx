@@ -15,7 +15,8 @@ export const MetronomeScreen: React.FC = () => {
     isOutdoorMode, 
     metronomeSetlist, 
     saveMetronomePreset, 
-    deleteMetronomePreset 
+    deleteMetronomePreset,
+    theme
   } = useAppContext();
 
   const { 
@@ -56,8 +57,10 @@ export const MetronomeScreen: React.FC = () => {
 
   const subdivisions: Subdivision[] = ['1/4', '1/8', 'Triplet', '1/16'];
 
+  const currentTheme = isOutdoorMode ? 'outdoor' : theme;
+
   return (
-    <div className="screen-container" data-theme={isOutdoorMode ? 'outdoor' : 'dark'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="screen-container" data-theme={currentTheme} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
       {/* 1. Rhythm Indicator */}
       <div style={{ display: 'flex', gap: '8px', marginTop: '30px' }}>
