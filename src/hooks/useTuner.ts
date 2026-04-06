@@ -3,7 +3,7 @@ import { Haptics, NotificationType } from '@capacitor/haptics';
 
 /**
  * useTuner - Advanced DSP pitch detection hook (Pro Suite)
- * Features: Sub-cent precision, Strobe rotation logic, and Success Haptics.
+ * Optimized for Mobile (Android/iOS) Compatibility.
  */
 
 interface TunerState {
@@ -51,9 +51,22 @@ export const useTuner = (
 
   const startTuning = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Mobile Optimization: Use explicit "raw audio" constraints for tuning.
+      // Filtering algorithms in Android (Echo/Noise cancel) can destroy pitch data for tuners.
+      const constraints = {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+          latency: 0
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
+      // AudioContext needs to be created/resumed within this click-triggered scope.
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
@@ -64,14 +77,32 @@ export const useTuner = (
 
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 4096;
+      analyserRef.current.smoothingTimeConstant = 0.2;
       
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
 
+      console.log('DSP: Microhpone stream active. SampleRate:', audioContextRef.current.sampleRate);
       setState(prev => ({ ...prev, isDetecting: true }));
       tick();
     } catch (err) {
       console.error('DSP: Audio initialization failed', err);
+      // Fallback: If raw constraints fail, try the simplest one
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        // Proceed with simple stream if it worked...
+        if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        analyserRef.current.fftSize = 4096;
+        const source = audioContextRef.current.createMediaStreamSource(stream);
+        source.connect(analyserRef.current);
+        setState(prev => ({ ...prev, isDetecting: true }));
+        tick();
+      } catch (err2) {
+        console.error('DSP: Complete failure requesting microphone', err2);
+      }
     }
   };
 
@@ -94,7 +125,9 @@ export const useTuner = (
     const windowedBuffer = applyHannWindow(filteredBuffer);
     const { pitch, rms } = computeAdvancedPitchYIN(windowedBuffer, sampleRate);
 
-    if (pitch !== -1 && rms > 0.01) {
+    // Mobile specific: Some device microphones are very quiet (especially on Android).
+    // Lowered RMS threshold to 0.005 for better sensitivity.
+    if (pitch !== -1 && rms > 0.005) {
       let displayNote: string;
       let exactCents: number;
 
@@ -116,12 +149,11 @@ export const useTuner = (
       emaCentsRef.current = (EMA_ALPHA_CENTS * exactCents + (1 - EMA_ALPHA_CENTS) * emaCentsRef.current);
       const finalCents = Math.round(emaCentsRef.current * 10) / 10;
 
-      // 2. STROBE LOGIC: Rotate based on precision error
-      // Speed = cents * constant. If cents=0, speed=0.
+      // 2. STROBE LOGIC
       const rotationSpeed = exactCents * 0.15; 
       strobeAngleRef.current = (strobeAngleRef.current + rotationSpeed) % 360;
 
-      // 3. SUCCESS HAPTICS (In-Tune notification)
+      // 3. SUCCESS HAPTICS
       if (Math.abs(finalCents) < 2.0) {
         const now = Date.now();
         if (hapticsEnabled && now - lastHapticTimeRef.current > HAPTIC_COOLDOWN_MS) {
@@ -152,7 +184,7 @@ export const useTuner = (
     };
   }, []);
 
-  return { ...state, startTuning, stopTuning, analyser: analyserRef.current };
+  return { ...state, startTuning, stopTuning };
 };
 
 /**

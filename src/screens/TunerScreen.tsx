@@ -32,6 +32,7 @@ export const TunerScreen: React.FC = () => {
     ? activeTuning.notes[selectedStringIndex] 
     : null;
 
+  const state = useTuner(a4Calibration, noteNaming, targetNote, hapticsEnabled);
   const { 
     note, 
     cents, 
@@ -39,7 +40,7 @@ export const TunerScreen: React.FC = () => {
     startTuning, 
     stopTuning,
     strobeAngle
-  } = useTuner(a4Calibration, noteNaming, targetNote, hapticsEnabled);
+  } = state;
   
   const [isBSOpen, setIsBSOpen] = useState(false);
 
@@ -143,7 +144,24 @@ export const TunerScreen: React.FC = () => {
           )}
         </AnimatePresence>
         
-        {/* Analytics Mode Toggle In Footer */}
+        {/* 3. Signal Strength Indicator (Android Debugging) */}
+        {isDetecting && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }}
+            style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <div style={{ width: '60px', height: '4px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+               <motion.div 
+                 animate={{ width: `${Math.min(100, (state.rms / 0.1) * 100)}%` }}
+                 style={{ height: '100%', backgroundColor: state.rms > 0.005 ? 'var(--color-success)' : 'var(--text-secondary)' }}
+               />
+            </div>
+            <span className="label-text" style={{ fontSize: '8px' }}>
+              {state.rms > 0 ? 'SIGNAL DETECTED' : 'QUIET / NO INPUT'}
+            </span>
+          </motion.div>
+        )}
       </div>
 
       {/* 3. Footer: Metallic Strings */}
