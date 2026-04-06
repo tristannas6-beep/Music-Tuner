@@ -17,12 +17,21 @@ export const SettingsScreen: React.FC = () => {
     theme,
     setTheme,
     noteNaming,
-    setNoteNaming
+    setNoteNaming,
+    isLoaded
   } = useAppContext();
 
   const handleA4Change = (e: React.ChangeEvent<HTMLInputElement>) => {
     setA4Calibration(parseInt(e.target.value));
   };
+
+  if (!isLoaded) {
+    return (
+      <div className="screen-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="label-text">Loading preferences...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="screen-container">
@@ -183,7 +192,7 @@ export const SettingsScreen: React.FC = () => {
       </div>
 
       <p className="label-text" style={{ textAlign: 'center', marginTop: '40px', opacity: 0.3, fontSize: '10px' }}>
-        Music Tuner v1.0.0 (Build 2026)
+        Music Tuner v1.1.0 (Build 2026)
       </p>
     </div>
   );

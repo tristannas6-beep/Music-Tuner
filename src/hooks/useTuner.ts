@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
  * useTuner - Advanced DSP pitch detection hook.
- * Features: HPF, Hann Window, Zero-Padding, YIN with Parabolic Interpolation, and EMA smoothing.
+ * Features: HPF, Hann Window, Zero-Padding, YIN with Parabolic Interpolation, 
+ * EMA smoothing, Native Haptic Feedback, and Solfege support.
  */
 
 interface TunerState {
@@ -13,13 +15,17 @@ interface TunerState {
   rms: number;
 }
 
-const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const LETTERS_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const SOLFEGE_NOTES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
 
 // Professional EMA Alpha (0.2 is "fast yet solid")
 const EMA_ALPHA_CENTS = 0.2;
 const EMA_ALPHA_PITCH = 0.15;
 
-export const useTuner = (a4Calibration: number = 440) => {
+// Haptic throttle
+const HAPTIC_COOLDOWN_MS = 2000;
+
+export const useTuner = (a4Calibration: number = 440, noteNaming: 'Letters' | 'Solfege' = 'Letters') => {
   const [state, setState] = useState<TunerState>({
     pitch: 0,
     note: '--',
@@ -40,6 +46,9 @@ export const useTuner = (a4Calibration: number = 440) => {
   // Filter state for 1st-order HPF
   const lastSampleRef = useRef(0);
   const lastOutputRef = useRef(0);
+
+  // Haptic state
+  const lastHapticTimeRef = useRef(0);
 
   const startTuning = async () => {
     try {
@@ -83,12 +92,10 @@ export const useTuner = (a4Calibration: number = 440) => {
 
     const sampleRate = audioContextRef.current.sampleRate;
 
-    // 1. INPUT PRE-PROCESSING: 1st-Order HPF @ 40Hz
-    // Removes DC offset and low-freq rumble
+    // 1. INPUT PRE-PROCESSING: 1st-Order HPF
     const filteredBuffer = applyHighPassFilter(buffer, sampleRate, 40, lastSampleRef, lastOutputRef);
 
     // 2. SIGNAL PREPARATION: Hann Windowing
-    // Smoothes edges to reduce spectral leakage
     const windowedBuffer = applyHannWindow(filteredBuffer);
 
     // 3. CORE PROCESSING: YIN with Sub-Sample Accuracy
@@ -96,20 +103,31 @@ export const useTuner = (a4Calibration: number = 440) => {
 
     // High resolution pitch detection with Noise Gate
     if (pitch !== -1 && rms > 0.01) {
-      const { note, exactCents } = frequencyToPitchData(pitch, a4Calibration);
+      const { note, exactCents } = frequencyToPitchData(pitch, a4Calibration, noteNaming);
 
-      // 5. OUTPUT STABILIZATION: Exponential Moving Average (EMA)
+      // 5. OUTPUT STABILIZATION: EMA
       emaPitchRef.current = emaPitchRef.current === 0 
         ? pitch 
         : (EMA_ALPHA_PITCH * pitch + (1 - EMA_ALPHA_PITCH) * emaPitchRef.current);
       
       emaCentsRef.current = (EMA_ALPHA_CENTS * exactCents + (1 - EMA_ALPHA_CENTS) * emaCentsRef.current);
 
+      const finalCents = Math.round(emaCentsRef.current * 10) / 10;
+
+      // 6. NATIVE UX: Haptics on "Perfect"
+      if (Math.abs(finalCents) < 3.0) {
+        const now = Date.now();
+        if (now - lastHapticTimeRef.current > HAPTIC_COOLDOWN_MS) {
+          Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+          lastHapticTimeRef.current = now;
+        }
+      }
+
       setState(prev => ({
         ...prev,
         pitch: emaPitchRef.current,
         note,
-        cents: Math.round(emaCentsRef.current * 10) / 10, // Round for clean UI (±0.1 resolution)
+        cents: finalCents,
         rms
       }));
     } else {
@@ -117,7 +135,7 @@ export const useTuner = (a4Calibration: number = 440) => {
     }
 
     rafIdRef.current = requestAnimationFrame(tick);
-  }, [a4Calibration]);
+  }, [a4Calibration, noteNaming]);
 
   useEffect(() => {
     return () => {
@@ -126,12 +144,11 @@ export const useTuner = (a4Calibration: number = 440) => {
     };
   }, []);
 
-  return { ...state, startTuning, stopTuning };
+  return { ...state, startTuning, stopTuning, analyser: analyserRef.current };
 };
 
 /**
  * DSP: 1st-Order High Pass Filter
- * y[n] = alpha * (y[n-1] + x[n] - x[n-1])
  */
 function applyHighPassFilter(
   buffer: Float32Array, 
@@ -155,7 +172,6 @@ function applyHighPassFilter(
 
 /**
  * DSP: Hann Windowing Function
- * w[n] = 0.5 * (1 - cos(2 * PI * n / (N - 1)))
  */
 function applyHannWindow(buffer: Float32Array) {
   const N = buffer.length;
@@ -174,10 +190,9 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
   const threshold = 0.1;
   const size = buffer.length;
   
-  // 4. BUFFER RESOLUTION: Zero Padding
-  // We double the size of the buffer with zeros to increase frequency resolution
+  // Zero Padding
   const paddedBuffer = new Float32Array(size * 2);
-  paddedBuffer.set(buffer); // Copy content, rest is 0 (zero padding)
+  paddedBuffer.set(buffer); 
   
   const paddedSize = paddedBuffer.length;
   const half = Math.floor(paddedSize / 2);
@@ -224,13 +239,12 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
     if (bestMin > 0.4) return { pitch: -1, rms };
   }
 
-  // 4. THE CORE IMPROVEMENT: Sub-Sample Accuracy (Parabolic Interpolation)
+  // 4. Sub-Sample Accuracy (Parabolic Interpolation)
   let refinedTau = tau;
   if (tau > 0 && tau < half - 1) {
     const s0 = yin[tau - 1];
     const s1 = yin[tau];
     const s2 = yin[tau + 1];
-    // Quadratic fit for sub-sample lag estimate
     const divisor = 2 * (2 * s1 - s2 - s0);
     if (Math.abs(divisor) > 1e-6) {
       refinedTau = tau + (s2 - s0) / divisor;
@@ -241,13 +255,18 @@ function computeAdvancedPitchYIN(buffer: Float32Array, sampleRate: number) {
 }
 
 /**
- * DSP: Frequency to Note/Cents calculation
+ * DSP: Frequency to Note/Cents calculation with Solfege support.
  */
-function frequencyToPitchData(hz: number, a4: number) {
+function frequencyToPitchData(hz: number, a4: number, noteNaming: 'Letters' | 'Solfege') {
   const h = 12 * (Math.log(hz / a4) / Math.log(2));
   const noteIdx = Math.round(h) + 69;
-  const name = NOTES[noteIdx % 12];
+  
+  const notesArray = noteNaming === 'Solfege' ? SOLFEGE_NOTES : LETTERS_NOTES;
+  const name = notesArray[noteIdx % 12];
+  
   const oct = Math.floor(noteIdx / 12) - 1;
-  const exactCents = (h - Math.round(h)) * 100; // Unprocessed cents for EMA
-  return { note: `${name}${oct}`, exactCents };
+  const exactCents = (h - Math.round(h)) * 100;
+  
+  const octaveSuffix = noteNaming === 'Solfege' ? ` (${oct})` : oct;
+  return { note: `${name}${octaveSuffix}`, exactCents };
 }

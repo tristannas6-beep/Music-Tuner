@@ -1,0 +1,7 @@
+{
+  "name": "Music Tuner Elite",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react"
+}
