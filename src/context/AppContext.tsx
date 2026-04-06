@@ -7,6 +7,7 @@ export interface TuningInfo {
   name: string;
   notes: string[];
 }
+export type Tuning = TuningInfo;
 
 export interface MetronomePreset {
   id: string;
@@ -46,7 +47,12 @@ interface AppContextType extends AppState {
   saveMetronomePreset: (preset: Omit<MetronomePreset, 'id'>) => Promise<void>;
   deleteMetronomePreset: (id: string) => Promise<void>;
   updateEarTrainingScore: (score: number) => Promise<void>;
+  isPermissionGranted: boolean | null;
+  setIsPermissionGranted: (val: boolean) => void;
   isLoaded: boolean;
+  tuningLibrary: Record<string, Tuning[]>;
+  setSelectedInstrument: (inst: InstrumentType) => Promise<void>;
+  deleteCustomTuning?: (id: string) => Promise<void>;
 }
 
 const tunings: Record<InstrumentType, TuningInfo[]> = {
@@ -90,6 +96,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [strobeMode, setStrobeMode] = useState(false);
   const [metronomeSetlist, setMetronomeSetlist] = useState<MetronomePreset[]>([]);
   const [earTrainingScore, setEarTrainingScore] = useState(0);
+  const [isPermissionGranted, setIsPermissionGranted] = useState<boolean | null>(null);
 
   // Load state from Preferences on mount
   useEffect(() => {
@@ -248,6 +255,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       saveMetronomePreset,
       deleteMetronomePreset,
       updateEarTrainingScore,
+      isPermissionGranted,
+      setIsPermissionGranted,
+      tuningLibrary: tunings as Record<string, Tuning[]>,
+      setSelectedInstrument: setInstrument
     }}>
       {children}
     </AppContext.Provider>
